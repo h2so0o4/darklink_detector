@@ -24,7 +24,7 @@ urllib3.disable_warnings()
 
 # ==================== 配置区域 ====================
 # 企业微信机器人配置（需替换为实际Webhook地址）
-WECHAT_WEBHOOK = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxx"
+WECHAT_WEBHOOK = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx"
 
 # 白名单域名
 WHITELIST_DOMAINS = {
@@ -64,6 +64,22 @@ SKIP_EXTENSIONS = {
     # 音视频
     'mp3', 'wav', 'mp4', 'avi', 'mov', 'flv'
 }
+
+USER_AGENTS = [
+    # Chrome
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
+    
+    # Firefox
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
+    
+    # Safari
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1",
+    
+    # Edge
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59"
+]
+
 
 # 预编译正则表达式
 BLACKLIST_REGEX = {
@@ -252,52 +268,73 @@ def should_skip_url(url):
 
 # ==================== Selenium配置 ====================
 def init_selenium_driver():
-    """初始化Selenium WebDriver"""
+    """初始化Selenium WebDriver（完整修复版）"""
+    # 确保导入所需库
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+        from webdriver_manager.chrome import ChromeDriverManager
+        import random
+    except ImportError as e:
+        raise ImportError(f"Required packages not found: {e}")
+
+    # 检查全局 USER_AGENTS 是否存在
+    if not globals().get('USER_AGENTS'):
+        raise ValueError("USER_AGENTS list not defined in global scope")
+
     chrome_options = Options()
-    chrome_options.add_argument('--headless')  # 无头模式
+    
+    # 基础反检测配置
+    chrome_options.add_argument('--headless')
     chrome_options.add_argument('--disable-gpu')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
+    
+    # 反自动化检测配置
     chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-
-    # 隐藏自动化特征
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
-
-    # 随机User-Agent
-    chrome_options.add_argument(f'user-agent={random.choice(USER_AGENTS)}')
-
-    # 自动管理ChromeDriver
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-
-    # 修改浏览器指纹
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    return driver
+    
+    # 随机选择User-Agent
+    selected_ua = random.choice(USER_AGENTS)
+    chrome_options.add_argument(f'user-agent={selected_ua}')
+    
+    try:
+        # 自动管理ChromeDriver
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
+        # 移除navigator.webdriver属性
+        driver.execute_script(
+            "Object.defineProperty(navigator, 'webdriver', {"
+            "get: () => undefined,"
+            "enumerable: true"
+            "})"
+        )
+        
+        return driver
+    except Exception as e:
+        raise RuntimeError(f"Selenium初始化失败: {str(e)}")
 
 
 def fetch_with_selenium(url, timeout=30):
-    """使用Selenium获取页面"""
-    driver = None
+    """使用Selenium获取页面（增加错误处理）"""
     try:
         driver = init_selenium_driver()
-        driver.set_page_load_timeout(timeout)
         driver.get(url)
-
-        # 模拟人类浏览行为
+        
+        # 模拟人类操作
         time.sleep(random.uniform(1, 3))
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight/3)")
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2)")
         time.sleep(random.uniform(0.5, 1.5))
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
-
-        # 获取渲染后的HTML
-        html = driver.page_source
-        return html
+        
+        return driver.page_source
     except Exception as e:
         print_with_time(f"Selenium获取失败: {str(e)}")
         return None
     finally:
-        if driver:
+        if 'driver' in locals():
             driver.quit()
 
 def record_dead_link(filename, source_url, dead_url, reason, status_code=None):
