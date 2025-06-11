@@ -15,10 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import socket
 import os
 import html
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 
 urllib3.disable_warnings()
 
@@ -43,10 +40,10 @@ BLACKLIST = {
            'B体育平台', 'B体育登录', 'FB体育', 'KB体育', 'bb贝博', 'bet体育', 'b体育app', 'b体育官方', 'b体育官网', 'yb体育', '爱游戏app', '爱游戏ayx',
            '贝博app', '贝博体育', 'OB体育', '乐鱼体育', 'TG纸飞机'],
     '色情': ['色情', '情色', '性爱', '裸聊', '成人视频', '成人小说',
-           '约炮', '一夜情', '偷拍', '自拍', '夫妻交友', '换妻', '小姐', '上门服务', '午夜无码', '大杳蕉', '无码久久', '色综合久久', 'Av麻豆', '国产麻豆', '在线av',
+           '约炮', '一夜情', '偷拍', '自拍', '夫妻交友', '国产黄色', '换妻', '小姐', '上门服务', '午夜无码', '大杳蕉', '无码久久', '色综合久久', 'Av麻豆', '国产麻豆', '在线av',
            '无码一区', '免费无码', '颜射', '黑丝诱惑', '第4色', '精品久久', '大尺度私拍', '无毛白虎', '直播做爱', '肉便器', '蚊香社', '亚洲无码', '人妻熟女'],
-    '盗版': ['盗版', '破解版', '盗版资源', '枪版',
-           '电影下载', '免VIP', '蓝光破解', 'BT下载', '磁力链接', '网盘资源', '星空影院', '青苹果影院', '秋葵视频', '芭乐视频', '青鸟影院', '四虎影院', '星辰影视',
+    '盗版': ['盗版', '破解版', '盗版资源', '枪版','生活影院','高清电影','在线手机免费播放',
+           '电影下载', '免VIP', '蓝光破解', 'BT下载', '磁力链接', '网盘资源', '星空影院', '青苹果影院', '青苹果乐园影院', '秋葵视频', '芭乐视频', '青鸟影院', '四虎影院', '星辰影视',
            '星辰影院', '秋霞电影网', '草民影院', '光棍影院', '丝瓜直播app', '大色窝', '成人短视频app', '茄子视频app', '豆奶短视频', '香蕉91', '奇米影视', '策驰影院',
            '麻花影视']
 }
@@ -80,6 +77,9 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59"
 ]
 
+# 创建output目录
+output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output')
+os.makedirs(output_dir, exist_ok=True)
 
 # 预编译正则表达式
 BLACKLIST_REGEX = {
@@ -126,7 +126,8 @@ def get_output_filename(url):
     extracted = tldextract.extract(url)
     domain = f"{extracted.domain}_{extracted.suffix}".replace('.', '_')
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"dark_links_{domain}_{timestamp}.txt"
+    # 修改为输出到output目录
+    return os.path.join(output_dir, f"dark_links_{domain}_{timestamp}.txt")
 
 
 # ==================== 通知功能 ====================
@@ -272,10 +273,12 @@ def init_selenium_driver():
     # 确保导入所需库
     try:
         from selenium import webdriver
+        from selenium.webdriver.chrome.service import Service as ChromeService  # 新版本
+        from selenium.webdriver.common.service import Service as LegacyService  # 旧版本
         from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.chrome.service import Service
         from webdriver_manager.chrome import ChromeDriverManager
         import random
+        # print(webdriver.__version__)
     except ImportError as e:
         raise ImportError(f"Required packages not found: {e}")
 
@@ -301,6 +304,7 @@ def init_selenium_driver():
     chrome_options.add_argument(f'user-agent={selected_ua}')
     
     try:
+
         # 自动管理ChromeDriver
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -331,14 +335,19 @@ def fetch_with_selenium(url, timeout=30):
         
         return driver.page_source
     except Exception as e:
-        print_with_time(f"Selenium获取失败: {str(e)}")
+        # print_with_time(f"Selenium获取失败: {str(e)}")
         return None
     finally:
         if 'driver' in locals():
             driver.quit()
 
+
 def record_dead_link(filename, source_url, dead_url, reason, status_code=None):
     """记录死链到单独文件"""
+    # 确保文件名也指向output目录
+    if not filename.startswith(output_dir):
+        filename = os.path.join(output_dir, os.path.basename(filename))
+
     with open(filename, 'a', encoding='utf-8') as f:
         f.write(f"检测时间: {get_current_time()}\n")
         f.write(f"来源页面: {source_url}\n")
@@ -346,8 +355,7 @@ def record_dead_link(filename, source_url, dead_url, reason, status_code=None):
         f.write(f"错误类型: {reason}\n")
         if status_code:
             f.write(f"状态码: {status_code}\n")
-        f.write("\n" + "="*50 + "\n\n")
-
+        f.write("\n" + "=" * 50 + "\n\n")
 
 def process_link(source_url, target_url, headers, dark_file, dead_file):
     """处理链接（同时检测暗链和死链）"""
@@ -370,6 +378,7 @@ def process_link(source_url, target_url, headers, dark_file, dead_file):
             found = check_black_keywords(response.text)
             if found:
                 write_to_file(dark_file, source_url, target_url, found)
+                print_with_time(f"页面: {source_url} 存在暗链 {target_url}")
                 return (1, 0)  # 发现暗链
 
         return (0, 0)  # 正常链接
@@ -393,7 +402,7 @@ def main():
 
 
     # 新增死链文件初始化（放在 output_file 初始化之后）
-    dead_links_file = f"dead_links_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    dead_links_file = os.path.join(output_dir, f"dead_links_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
     print_with_time(f"死链报告将保存至: {dead_links_file}")
     dead_link_count = 0  # 初始化死链计数器
 
@@ -402,6 +411,9 @@ def main():
     output_file = get_output_filename(start_url)
     print_with_time(f"开始扫描主域名: {main_domain}")
     print_with_time(f"结果将保存至: {output_file}")
+
+    # 检测过的URL，避免重复检测
+    processed_urls = set()
 
     # 爬取队列
     visited = set()
@@ -463,8 +475,13 @@ def main():
                     # 特殊处理相对路径
                     if not href.startswith(('http://', 'https://')):
                         if not href.startswith('/'):
-                            href = '/' + href  # 确保相对路径正确拼接
+                            href = '/' + href
                     absolute_url = urljoin(current_url, href)
+
+                    # 检查是否已经处理过这个URL
+                    if absolute_url in processed_urls:
+                        continue
+                    processed_urls.add(absolute_url)
 
                     # ============ 新增跳过检查 ============
                     if should_skip_url(absolute_url):
@@ -501,6 +518,57 @@ def main():
                         if absolute_url not in visited:
                             queue.append((absolute_url, depth + 1))
 
+                # 2. 新增处理纯文本中的URL
+                text_elements = soup.find_all(text=True)
+                url_pattern = re.compile(
+                    r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+
+                for text in text_elements:
+                    urls = extract_urls_from_text(text)
+                    for href in urls:
+                        href = href.strip()
+                        if not href:
+                            continue
+
+                        # 对于文本中的URL已经是绝对路径，不需要拼接
+                        absolute_url = href
+
+                        # 检查是否已经处理过这个URL
+                        if absolute_url in processed_urls:
+                            continue
+                        processed_urls.add(absolute_url)
+
+                        # 跳过检查
+                        if should_skip_url(absolute_url):
+                            continue
+
+                        parsed = urlparse(absolute_url)
+                        if parsed.scheme not in ('http', 'https'):
+                            continue
+
+                        # 域名判断
+                        target_extracted = tldextract.extract(absolute_url)
+                        target_domain = f"{target_extracted.domain}.{target_extracted.suffix}"
+                        target_full_domain = f"{target_extracted.subdomain}.{target_extracted.domain}.{extracted.suffix}".lstrip(
+                            '.')
+
+                        if is_whitelist(absolute_url):
+                            continue  # 白名单域名，直接跳过
+                        elif target_domain != main_domain:
+                            # 非白名单 & 外部域名 → 进入黑链检测
+                            future = executor.submit(
+                                process_link,
+                                current_url,
+                                absolute_url,
+                                headers,
+                                output_file,
+                                dead_links_file
+                            )
+                            futures.append(future)
+                        else:
+                            # 同域名，继续爬取
+                            if absolute_url not in visited:
+                                queue.append((absolute_url, depth + 1))
                 # 控制爬取速度
                 time.sleep(random.uniform(0.5, 1.5))
 
@@ -525,9 +593,9 @@ def main():
     # 打开结果文件所在目录
     try:
         if os.name == 'nt':  # Windows
-            os.startfile(os.path.dirname(os.path.abspath(output_file)))
+            os.startfile(output_dir)
         elif os.name == 'posix':  # macOS/Linux
-            os.system(f'open "{os.path.dirname(os.path.abspath(output_file))}"')
+            os.system(f'open "{output_dir}"')
     except:
         pass
 
