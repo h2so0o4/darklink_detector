@@ -519,7 +519,7 @@ def main():
                             queue.append((absolute_url, depth + 1))
 
                 # 2. 新增处理纯文本中的URL
-                text_elements = soup.find_all(text=True)
+                text_elements = soup.find_all(string=True)
                 url_pattern = re.compile(
                     r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
 
